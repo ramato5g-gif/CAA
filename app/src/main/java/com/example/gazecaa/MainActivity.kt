@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val hasVoice: (String) -> Boolean = { id -> rev >= 0 && voices.has(id) }
         val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
-                val n = runCatching { Backup.restore(this, uri) }.getOrDefault(0)
+                val n = runCatching { Backup.restore(this@MainActivity, uri) }.getOrDefault(0)
                 if (n > 0) {
                     toast("Backup ripristinato ($n file). Riavvio…")
                     window.decorView.postDelayed({
@@ -349,7 +349,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                                 sessions = remember { repo.all() },
                                 onBack = { screen = Screen.HISTORY },
                                 onReport = { learner, program, list ->
-                                    runCatching { PdfReport.create(this, learner, program, list) }
+                                    runCatching { PdfReport.create(this@MainActivity, learner, program, list) }
                                         .onSuccess { shareFile(it, "application/pdf", "Report ABA") }
                                         .onFailure { toast("Report non riuscito: ${it.message}") }
                                 }
@@ -450,7 +450,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     confirmButton = {
                         TextButton(onClick = {
                             showBackup = false
-                            runCatching { Backup.create(this) }
+                            runCatching { Backup.create(this@MainActivity) }
                                 .onSuccess { shareFile(it, "application/zip", "Backup Sguardo CAA") }
                                 .onFailure { toast("Backup non riuscito: ${it.message}") }
                         }) { Text("💾 Esporta backup") }
