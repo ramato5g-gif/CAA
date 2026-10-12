@@ -21,16 +21,29 @@ https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/
 Poi apri la cartella in Android Studio e premi Run.
 
 ## Uso
-- **Calibra (9 punti)**: l'utente segue la stella. L'app mostra la precisione stimata.
-- **Ricentra**: 1 punto al centro, corregge la deriva se l'utente si è spostato (anche durante una sessione).
-- **Comunica**: tabella CAA 2x2 (Sì / No / Acqua / Aiuto) con voce.
-- **Sessione ABA**: prove discrete (identificazione recettiva o abbinamento), campo 1–4 immagini,
-  prompt indipendente / visivo / posizionale, correzione dell'errore, rinforzo, raccolta dati automatica.
-- **Dati**: storico sessioni, esportazione CSV (separatore `;`, si apre in Excel).
-- **⚙ Impostazioni**: tempo di sosta, stabilità del cursore, cursore visibile o nascosto.
-- I dati restano solo sul tablet. Nel campo "Utente" usa iniziali o un codice.
-- Parametri avanzati: `GazeConfig.kt`; tempi della prova in cima ad `AbaSessionScreen.kt`;
-  immagini/target in `SymbolLibrary` dentro `AbaModel.kt`.
+**Puntatore** (Home): Sguardo (calibrazione 9 punti), Testa (premi Ricentra), Touch.
+**Conferma** (⚙): Sosta, Ammiccamento lungo, Scansione (le schede si illuminano a turno; si sceglie
+toccando lo schermo, con un sensore/switch Bluetooth che invia Spazio o Invio, o con un ammiccamento lungo).
+Magnetismo e correzione automatica della deriva a ogni scelta.
+
+**Comunica**: tabella configurabile (✏), simboli con foto personali (📷), modalità "componi frase".
+
+**Sessione ABA**: risposta Touch/Sguardo/Testa; identificazione recettiva o abbinamento; campo 1–4;
+prompt visivo/posizionale con sfumatura automatica; correzione dell'errore; rinforzo con suono e
+vibrazione; token board con pausa premio; pausa automatica se il volto esce dall'inquadratura.
+
+**Dati**: riepilogo con note del terapista, storico, 📈 andamento per utente/target con criterio
+di acquisizione (80% indipendenti in 2 sessioni consecutive, modificabile in GazeConfig), CSV.
+
+**Protezione bambino** (⚙): controlli nascosti, si mostrano tenendo premuto ⚙ nell'angolo.
+**📌 Blocca app**: fissaggio schermo, il bambino non può uscire dall'app.
+
+**👤 Profili**: un profilo per bambino (impostazioni, calibrazione, tabella, configurazione ABA).
+**🎙 Voci registrate**: su ogni simbolo (tabella o target ABA) si può registrare una voce familiare.
+**📏 Test di precisione**: misura l'errore del puntatore in cm e suggerisce quante immagini per riga.
+**📄 Report PDF** dall'Andamento; **💾 Backup** completo (.zip) esportabile e ripristinabile.
+
+I dati e le foto restano solo sul tablet. Nel campo "Utente" usa iniziali o un codice.
 
 ## Consigli
 Tablet su supporto fisso a 40–60 cm, luce frontale diffusa, niente controluce.

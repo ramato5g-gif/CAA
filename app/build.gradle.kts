@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.gazecaa"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3-aba"
+        versionCode = 6
+        versionName = "0.6"
     }
 
     // Keystore fisso nel repo: ogni APK compilato ha la stessa firma,

@@ -116,22 +116,44 @@ class OneEuroFilter(var minCutoff: Float, private val beta: Float, private val d
     }
 }
 
-/** Features → punto schermo normalizzato (0..1) filtrato. */
-class GazeEstimator(saved: GazeModel?) {
+/** Posizione "neutra" della testa per la modalità Testa (si imposta con Ricentra). */
+data class HeadNeutral(val hx: Float, val hy: Float) {
+    fun serialize() = "$hx,$hy"
+    companion object {
+        val DEFAULT = HeadNeutral(0f, 0.6f)
+        fun deserialize(s: String?): HeadNeutral? =
+            s?.split(",")?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { HeadNeutral(it[0], it[1]) }
+    }
+}
+
+/** Features → punto schermo normalizzato (0..1) filtrato. null = nessun punto valido. */
+class GazeEstimator(saved: GazeModel?, var neutral: HeadNeutral) {
     @Volatile var model: GazeModel = saved ?: GazeModel.default()
     var calibrated: Boolean = saved != null
+    var mode: InputMode = InputMode.EYES
+    /** Guadagno modalità Testa (da sensibilità 1..10). */
+    var headGain = 3.5f
 
-    private val fx = OneEuroFilter(0.4f, GazeConfig.FILTER_BETA)
-    private val fy = OneEuroFilter(0.4f, GazeConfig.FILTER_BETA)
+    private val fx = OneEuroFilter(0.8f, GazeConfig.FILTER_BETA)
+    private val fy = OneEuroFilter(0.8f, GazeConfig.FILTER_BETA)
 
-    /** SMOOTHING: stabilità 1 (reattivo, 2 Hz) .. 10 (molto stabile, 0.2 Hz). */
+    /** SMOOTHING: stabilità 1 (reattivo, 4 Hz) .. 10 (molto stabile, 0,4 Hz). */
     fun setStability(s: Int) {
-        val c = 2f / s.coerceIn(1, 10)
+        val c = 4f / s.coerceIn(1, 10)
         fx.minCutoff = c; fy.minCutoff = c
     }
 
-    fun estimate(f: GazeFeatures): Offset {
-        val p = model.predict(f)
+    fun setHeadSensitivity(s: Int) { headGain = 0.7f * s.coerceIn(1, 10) }
+
+    fun estimate(f: GazeFeatures): Offset? {
+        val p = when (mode) {
+            InputMode.EYES -> if (!f.eyesOpen) return null else model.predict(f) // a occhi chiusi resta fermo
+            InputMode.HEAD -> Offset(
+                0.5f + headGain * (f.hx - neutral.hx),
+                0.5f + headGain * GazeConfig.HEAD_GAIN_Y_FACTOR * (f.hy - neutral.hy)
+            )
+            InputMode.TOUCH -> return null
+        }
         return Offset(
             fx.filter(p.x.coerceIn(-0.1f, 1.1f), f.timestamp).coerceIn(0f, 1f),
             fy.filter(p.y.coerceIn(-0.1f, 1.1f), f.timestamp).coerceIn(0f, 1f),
