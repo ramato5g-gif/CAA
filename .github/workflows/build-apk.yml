@@ -29,7 +29,13 @@ jobs:
             https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
 
       - name: Compila APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --no-daemon 2>&1 | tee build.log
+
+      - name: Errori di compilazione
+        if: failure()
+        run: grep -E "^e: |What went wrong|error:|ERROR" -A4 build.log | head -120
 
       - name: Rinomina APK
         run: cp app/build/outputs/apk/debug/app-debug.apk SguardoCAA.apk
