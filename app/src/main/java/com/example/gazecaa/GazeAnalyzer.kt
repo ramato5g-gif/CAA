@@ -15,22 +15,30 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import kotlin.math.hypot
 
-/** Segnale di sguardo "grezzo", centrato su 0 (non ancora mappato sullo schermo). */
-data class RawGaze(val x: Float, val y: Float, val timestamp: Long)
+/**
+ * Caratteristiche estratte da un frame. La conversione in coordinate schermo
+ * la fa il modello di calibrazione (GazeModel), che impara da solo quanto
+ * pesano occhi e testa per QUESTO utente.
+ *
+ * ex, ey = posizione dell'iride nell'occhio; hx, hy = posa della testa;
+ * eyeDist = distanza interoculare / larghezza frame (serve per l'indicatore di distanza).
+ */
+data class GazeFeatures(
+    val ex: Float, val ey: Float,
+    val hx: Float, val hy: Float,
+    val eyeDist: Float,
+    val timestamp: Long,
+)
 
 /**
  * Analyzer CameraX basato su MediaPipe Face Landmarker (478 punti, iridi incluse).
- *
- * Il frame viene ruotato e SPECCHIATO, così destra/sinistra dell'immagine coincidono
- * con destra/sinistra dell'utente e dello schermo.
- *
- * [onGaze] viene chiamato sul thread dell'analyzer: fare il post sul main thread.
+ * Il frame viene ruotato e specchiato: destra/sinistra = destra/sinistra dell'utente.
+ * [onFeatures] è chiamato sul thread dell'analyzer.
  * @throws Exception se il modello in assets manca o non si carica.
  */
 class GazeAnalyzer(
     context: Context,
-    private val headWeight: () -> Float,
-    private val onGaze: (RawGaze?) -> Unit,
+    private val onFeatures: (GazeFeatures?) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
     private val landmarker: FaceLandmarker = FaceLandmarker.createFromOptions(
@@ -42,7 +50,7 @@ class GazeAnalyzer(
                     .setDelegate(if (GazeConfig.USE_GPU) Delegate.GPU else Delegate.CPU)
                     .build()
             )
-            .setRunningMode(RunningMode.VIDEO) // sincrono, adatto al thread dell'analyzer
+            .setRunningMode(RunningMode.VIDEO)
             .setNumFaces(1)
             .setMinFaceDetectionConfidence(0.5f)
             .setMinFacePresenceConfidence(0.5f)
@@ -65,9 +73,8 @@ class GazeAnalyzer(
         } finally {
             imageProxy.close()
         }
-        if (frame == null) { onGaze(null); return }
+        if (frame == null) { onFeatures(null); return }
 
-        // I timestamp in modalità VIDEO devono essere strettamente crescenti
         var ts = SystemClock.uptimeMillis()
         if (ts <= lastTs) ts = lastTs + 1
         lastTs = ts
@@ -79,59 +86,54 @@ class GazeAnalyzer(
             null
         }
 
-        onGaze(
+        onFeatures(
             if (landmarks != null && landmarks.size >= 478)
-                computeGaze(landmarks, frame.width, frame.height)
+                computeFeatures(landmarks, frame.width, frame.height)
             else null
         )
     }
 
     fun close() = landmarker.close()
 
-    // ------------------------------------------------------------------
     // Indici MediaPipe:
-    //  occhio A: angoli 33/133, iride centro 468
-    //  occhio B: angoli 362/263, iride centro 473
-    //  palpebre: 159/145 (A), 386/374 (B) — solo per rilevare l'ammiccamento
+    //  occhio A: angoli 33/133, palpebre 159/145, iride 468 (centro) + 469-472 (bordo)
+    //  occhio B: angoli 362/263, palpebre 386/374, iride 473 (centro) + 474-477 (bordo)
     //  punta del naso: 1
-    // ------------------------------------------------------------------
-    private fun computeGaze(lm: List<NormalizedLandmark>, w: Int, h: Int): RawGaze? {
+    private fun computeFeatures(lm: List<NormalizedLandmark>, w: Int, h: Int): GazeFeatures? {
         fun p(i: Int) = PointF(lm[i].x() * w, lm[i].y() * h)
+        // Centro iride = media di centro + 4 punti del bordo (meno rumore del solo centro)
+        fun irisCenter(from: Int): PointF {
+            var x = 0f; var y = 0f
+            for (i in from..from + 4) { x += lm[i].x() * w; y += lm[i].y() * h }
+            return PointF(x / 5f, y / 5f)
+        }
 
         val ratios = listOfNotNull(
-            eyeRatio(p(468), p(33), p(133), p(159), p(145)),
-            eyeRatio(p(473), p(362), p(263), p(386), p(374)),
+            eyeRatio(irisCenter(468), p(33), p(133), p(159), p(145)),
+            eyeRatio(irisCenter(473), p(362), p(263), p(386), p(374)),
         )
         if (ratios.isEmpty()) return null // entrambi gli occhi chiusi
 
-        val px = ratios.map { it.x }.average().toFloat()
-        val py = ratios.map { it.y }.average().toFloat()
-
-        // Posa della testa approssimata: posizione del naso rispetto al centro degli occhi
         val a = p(33); val b = p(263); val nose = p(1)
         val eyeDist = hypot(a.x - b.x, a.y - b.y)
         if (eyeDist < 1f) return null
-        val headX = (nose.x - (a.x + b.x) / 2f) / eyeDist
-        val headY = (nose.y - (a.y + b.y) / 2f) / eyeDist - GazeConfig.NOSE_BASELINE_Y
 
-        val hw = headWeight()
-        val x = GazeConfig.PUPIL_WEIGHT * (px - 0.5f) + hw * GazeConfig.HEAD_SIGN_X * headX
-        val y = GazeConfig.PUPIL_WEIGHT * (py - 0.5f) + hw * GazeConfig.HEAD_SIGN_Y * headY
-        return RawGaze(x, y, System.currentTimeMillis())
+        return GazeFeatures(
+            ex = ratios.map { it.x }.average().toFloat(),
+            ey = ratios.map { it.y }.average().toFloat(),
+            hx = (nose.x - (a.x + b.x) / 2f) / eyeDist,
+            hy = (nose.y - (a.y + b.y) / 2f) / eyeDist,
+            eyeDist = eyeDist / w,
+            timestamp = System.currentTimeMillis(),
+        )
     }
 
-    /**
-     * Posizione dell'iride nell'occhio:
-     *  x = 0 (bordo sinistro) .. 1 (bordo destro)
-     *  y = 0.5 + scostamento verticale dalla linea degli angoli (le palpebre si muovono
-     *      con lo sguardo, gli angoli no → riferimento più stabile).
-     */
+    /** x: 0..1 da bordo sinistro a destro dell'occhio; y: 0.5 + scostamento dalla linea degli angoli. */
     private fun eyeRatio(iris: PointF, c1: PointF, c2: PointF, top: PointF, bottom: PointF): PointF? {
         val left = minOf(c1.x, c2.x)
         val width = maxOf(c1.x, c2.x) - left
         if (width < 4f) return null
         if ((bottom.y - top.y) / width < GazeConfig.BLINK_RATIO) return null // ammiccamento
-
         val cornerY = (c1.y + c2.y) / 2f
         return PointF(
             (iris.x - left) / width,

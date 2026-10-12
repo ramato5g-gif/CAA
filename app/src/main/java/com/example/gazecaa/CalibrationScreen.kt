@@ -1,9 +1,12 @@
 package com.example.gazecaa
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,54 +22,103 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+data class CalibrationResult(val model: GazeModel, val errorPct: Float)
+
+/** Raccoglie i frame validi (senza duplicati) per [durationMs]. */
+suspend fun collectSamples(provider: () -> GazeFeatures?, durationMs: Long): List<GazeFeatures> {
+    val out = mutableListOf<GazeFeatures>()
+    var lastTs = 0L
+    val end = System.currentTimeMillis() + durationMs
+    while (System.currentTimeMillis() < end) {
+        provider()?.let { if (it.timestamp != lastTs) { out += it; lastTs = it.timestamp } }
+        delay(20)
+    }
+    return out
+}
+
+private fun median(v: List<Float>): Float = v.sorted()[v.size / 2]
+
+/** Mediana componente per componente: elimina ammiccamenti e sguardi fuori bersaglio. */
+fun medianFeatures(s: List<GazeFeatures>) = GazeFeatures(
+    median(s.map { it.ex }), median(s.map { it.ey }),
+    median(s.map { it.hx }), median(s.map { it.hy }),
+    median(s.map { it.eyeDist }), 0L
+)
 
 /**
- * Calibrazione a 4 punti: l'utente fissa un punto in ogni angolo.
- * Dai valori raccolti si ricava il valore grezzo corrispondente ai bordi dello schermo.
- * Restituisce null se il volto non è stato rilevato.
+ * Calibrazione a 9 punti (griglia 3x3, ordine casuale). Il bersaglio si restringe
+ * per mantenere l'attenzione (utile con i bambini). Restituisce null se il volto
+ * non è stato visto in almeno 6 punti.
  */
 @Composable
-fun CalibrationScreen(rawProvider: () -> RawGaze?, onDone: (Calibration?) -> Unit) {
-    val m = 0.15f // margine dei punti dai bordi (frazione schermo)
-    val targets = remember { listOf(Offset(m, m), Offset(1 - m, m), Offset(m, 1 - m), Offset(1 - m, 1 - m)) }
+fun CalibrationScreen(featuresProvider: () -> GazeFeatures?, onDone: (CalibrationResult?) -> Unit) {
+    val points = remember {
+        listOf(0.1f, 0.5f, 0.9f).flatMap { y -> listOf(0.1f, 0.5f, 0.9f).map { x -> Offset(x, y) } }.shuffled()
+    }
     var step by remember { mutableIntStateOf(0) }
+    val radius = remember { Animatable(1f) }
     val done by rememberUpdatedState(onDone)
 
     LaunchedEffect(Unit) {
-        val samples = mutableListOf<Offset>()
-        for (i in targets.indices) {
+        val feats = mutableListOf<GazeFeatures>()
+        val targets = mutableListOf<Offset>()
+        for (i in points.indices) {
             step = i
-            delay(GazeConfig.CALIB_SETTLE_MS) // tempo per spostare lo sguardo
-            var sx = 0f; var sy = 0f; var n = 0
-            val end = System.currentTimeMillis() + GazeConfig.CALIB_POINT_MS - GazeConfig.CALIB_SETTLE_MS
-            while (System.currentTimeMillis() < end) {
-                rawProvider()?.let { sx += it.x; sy += it.y; n++ }
-                delay(33)
-            }
-            if (n < 5) { done(null); return@LaunchedEffect }
-            samples += Offset(sx / n, sy / n)
+            radius.snapTo(1f)
+            launch { radius.animateTo(0.3f, tween(GazeConfig.CALIB_POINT_MS.toInt())) }
+            delay(GazeConfig.CALIB_SETTLE_MS)
+            val s = collectSamples(featuresProvider, GazeConfig.CALIB_POINT_MS - GazeConfig.CALIB_SETTLE_MS)
+            if (s.size >= 5) { feats += medianFeatures(s); targets += points[i] }
         }
-        // samples: 0=TL 1=TR 2=BL 3=BR → estrapolazione lineare ai bordi 0 e 1
-        val left = (samples[0].x + samples[2].x) / 2
-        val right = (samples[1].x + samples[3].x) / 2
-        val top = (samples[0].y + samples[1].y) / 2
-        val bottom = (samples[2].y + samples[3].y) / 2
-        val kx = (right - left) / (1 - 2 * m)
-        val ky = (bottom - top) / (1 - 2 * m)
-        done(Calibration(left - m * kx, right + m * kx, top - m * ky, bottom + m * ky))
+        if (feats.size < 6) { done(null); return@LaunchedEffect }
+        val model = GazeModel.fit(feats, targets)
+        done(CalibrationResult(model, model.rmsError(feats, targets) * 100f))
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Text(
-            "Fissa il punto giallo (${step + 1}/4)",
-            color = Color.White, fontSize = 28.sp,
-            modifier = Modifier.align(Alignment.Center)
+            "Segui la stella  ·  ${step + 1}/9",
+            color = Color.White, fontSize = 24.sp,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)
         )
         Canvas(Modifier.fillMaxSize()) {
-            val t = targets[step]
+            val t = points[step]
             val c = Offset(t.x * size.width, t.y * size.height)
-            drawCircle(Color.Yellow, radius = 22.dp.toPx(), center = c)
-            drawCircle(Color.Black, radius = 6.dp.toPx(), center = c)
+            drawCircle(Color(0xFFFFD54F), radius = 44.dp.toPx() * radius.value, center = c)
+            drawCircle(Color.Black, radius = 5.dp.toPx(), center = c)
+        }
+    }
+}
+
+/**
+ * Ricentratura rapida (1 punto al centro): corregge la deriva se l'utente
+ * si è spostato, senza rifare tutta la calibrazione. Restituisce la correzione.
+ */
+@Composable
+fun RecenterScreen(featuresProvider: () -> GazeFeatures?, model: GazeModel, onDone: (Offset?) -> Unit) {
+    val radius = remember { Animatable(1f) }
+    val done by rememberUpdatedState(onDone)
+
+    LaunchedEffect(Unit) {
+        launch { radius.animateTo(0.3f, tween((GazeConfig.CALIB_SETTLE_MS + GazeConfig.RECENTER_MS).toInt())) }
+        delay(GazeConfig.CALIB_SETTLE_MS)
+        val s = collectSamples(featuresProvider, GazeConfig.RECENTER_MS)
+        if (s.size < 5) { done(null); return@LaunchedEffect }
+        val p = model.predict(medianFeatures(s))
+        done(Offset(0.5f - p.x, 0.5f - p.y))
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Text(
+            "Guarda la stella",
+            color = Color.White, fontSize = 24.sp,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)
+        )
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(Color(0xFFFFD54F), radius = 44.dp.toPx() * radius.value, center = center)
+            drawCircle(Color.Black, radius = 5.dp.toPx(), center = center)
         }
     }
 }

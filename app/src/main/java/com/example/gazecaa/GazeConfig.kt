@@ -9,13 +9,15 @@ package com.example.gazecaa
  */
 object GazeConfig {
 
-    // ---------- Regolabili dall'app (questi sono i valori di partenza) ----------
-    /** Tempo di sosta (ms) per attivare un pulsante. */
+    // ---------- Regolabili dall'app ----------
+    /** Tempo di sosta (ms) per attivare un'immagine. */
     const val DEFAULT_DWELL_MS = 1500
-    /** Finestra media mobile (frame). Più alto = cursore più stabile ma più lento. */
-    const val DEFAULT_SMOOTHING = 8
-    /** Peso della testa nel segnale: 0 = solo occhi, 1 = molto head-tracking. */
-    const val DEFAULT_HEAD_WEIGHT = 0.5f
+    /** Stabilità del cursore 1..10 (filtro One Euro): alto = più fermo ma più lento. */
+    const val DEFAULT_STABILITY = 5
+
+    // ---------- Filtro One Euro ----------
+    /** Quanto il filtro "si apre" durante i movimenti veloci (saccadi). Più alto = meno ritardo. */
+    const val FILTER_BETA = 0.4f
 
     // ---------- Dwell ----------
     /** Isteresi (dp): margine oltre il bordo del pulsante agganciato prima di azzerare il timer. */
@@ -24,23 +26,17 @@ object GazeConfig {
     const val COOLDOWN_MS = 1200L
 
     // ---------- Tracciamento ----------
-    /** Volto assente per più di X ms → cursore nascosto (gli ammiccamenti brevi sono ignorati). */
     const val FACE_LOST_TIMEOUT_MS = 600L
-    /** Peso della posizione dell'iride. */
-    const val PUPIL_WEIGHT = 1.0f
-    /** Fattore di scala verticale dell'iride (il movimento verticale dell'occhio è piccolo). */
+    /** Scala dello spostamento verticale dell'iride (movimento piccolo). */
     const val PUPIL_VERTICAL_GAIN = 2.0f
-    /** Inverti (1f ↔ -1f) se ruotando la TESTA il cursore va al contrario rispetto agli OCCHI. */
-    const val HEAD_SIGN_X = 1f
-    const val HEAD_SIGN_Y = 1f
-    /** Distanza verticale tipica naso-occhi (in "distanze interoculari"), sottratta per centrare l'asse Y. */
-    const val NOSE_BASELINE_Y = 0.6f
     /** Apertura occhio (altezza/larghezza) sotto cui il frame è un ammiccamento. */
     const val BLINK_RATIO = 0.12f
+    /** Regolarizzazione della regressione di calibrazione (più alto = modello più "prudente"). */
+    const val RIDGE_LAMBDA = 0.005
 
-    /** Sensibilità SOLO senza calibrazione: schermo = 0.5 + raw * GAIN. */
-    const val DEFAULT_GAIN_X = 3.0f
-    const val DEFAULT_GAIN_Y = 3.0f
+    // ---------- Distanza dal tablet (distanza tra gli angoli esterni degli occhi / larghezza frame) ----------
+    const val EYE_DIST_MIN = 0.10f   // sotto: troppo lontano (~80 cm)
+    const val EYE_DIST_MAX = 0.28f   // sopra: troppo vicino (~30 cm)
 
     // ---------- Camera / modello ----------
     const val ANALYSIS_WIDTH = 640
@@ -50,6 +46,7 @@ object GazeConfig {
     const val USE_GPU = false
 
     // ---------- Calibrazione ----------
-    const val CALIB_POINT_MS = 2200L
-    const val CALIB_SETTLE_MS = 800L
+    const val CALIB_POINT_MS = 1800L
+    const val CALIB_SETTLE_MS = 700L
+    const val RECENTER_MS = 1500L
 }

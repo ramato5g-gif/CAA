@@ -21,10 +21,16 @@ https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/
 Poi apri la cartella in Android Studio e premi Run.
 
 ## Uso
-- Al primo avvio parte la **calibrazione**: l'utente fissa i 4 punti gialli.
-- **⚙ Impostazioni**: tempo di sosta, stabilità del cursore, uso della testa (salvati).
-- I pulsanti funzionano anche al tocco (per il caregiver).
-- Parametri avanzati: `app/src/main/java/com/example/gazecaa/GazeConfig.kt`.
+- **Calibra (9 punti)**: l'utente segue la stella. L'app mostra la precisione stimata.
+- **Ricentra**: 1 punto al centro, corregge la deriva se l'utente si è spostato (anche durante una sessione).
+- **Comunica**: tabella CAA 2x2 (Sì / No / Acqua / Aiuto) con voce.
+- **Sessione ABA**: prove discrete (identificazione recettiva o abbinamento), campo 1–4 immagini,
+  prompt indipendente / visivo / posizionale, correzione dell'errore, rinforzo, raccolta dati automatica.
+- **Dati**: storico sessioni, esportazione CSV (separatore `;`, si apre in Excel).
+- **⚙ Impostazioni**: tempo di sosta, stabilità del cursore, cursore visibile o nascosto.
+- I dati restano solo sul tablet. Nel campo "Utente" usa iniziali o un codice.
+- Parametri avanzati: `GazeConfig.kt`; tempi della prova in cima ad `AbaSessionScreen.kt`;
+  immagini/target in `SymbolLibrary` dentro `AbaModel.kt`.
 
 ## Consigli
 Tablet su supporto fisso a 40–60 cm, luce frontale diffusa, niente controluce.
