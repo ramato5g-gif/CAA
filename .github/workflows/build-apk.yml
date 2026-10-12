@@ -1,0 +1,51 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Scarica modello MediaPipe
+        run: |
+          mkdir -p app/src/main/assets
+          curl -fL -o app/src/main/assets/face_landmarker.task https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+
+      - name: Compila APK
+        run: |
+          if ! gradle :app:assembleDebug --no-daemon > build.log 2>&1; then
+            echo "=================== ERRORI ==================="
+            grep -E -A4 "^e: |What went wrong|error:" build.log | head -150
+            echo "=================== FINE LOG ==================="
+            tail -40 build.log
+            exit 1
+          fi
+          cp app/build/outputs/apk/debug/app-debug.apk SguardoCAA.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SguardoCAA-apk
+          path: SguardoCAA.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Sguardo CAA (ultima build)
+          prerelease: true
+          files: SguardoCAA.apk
