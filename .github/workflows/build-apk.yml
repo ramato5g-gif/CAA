@@ -33,21 +33,4 @@ jobs:
           set -o pipefail
           gradle :app:assembleDebug --no-daemon 2>&1 | tee build.log
 
-      - name: Errori di compilazione
-        if: failure()
-        run: grep -E "^e: |What went wrong|error:|ERROR" -A4 build.log | head -120
-
-      - name: Rinomina APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk SguardoCAA.apk
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SguardoCAA-apk
-          path: SguardoCAA.apk
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Sguardo CAA (ultima build)
-          prerelease: true
-          files: SguardoCAA.apk
+      - name: Errori di
